@@ -11,12 +11,16 @@ export async function POST(req: NextRequest) {
     const { api_key, api_secret } = await req.json()
     if (!api_key || !api_secret) return NextResponse.json({ error: 'Clés manquantes' }, { status: 400 })
 
-    // D'abord récupère tous les marchés disponibles sur ton compte
+    // Taux EUR/USD live via CoinGecko
+    const fxRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=euro&vs_currencies=usd')
+    const fxData = await fxRes.json()
+    const eurToUsd = fxData?.euro?.usd || 1.08
+    console.log('EUR/USD rate:', eurToUsd)
+
+    // Récupère les balances
     const timestamp = Date.now().toString()
-    const method = 'GET'
-    const path = '/v2/balance'
     const signature = crypto.createHmac('sha256', api_secret)
-      .update(timestamp + method + path + '')
+      .update(timestamp + 'GET' + '/v2/balance' + '')
       .digest('hex')
 
     const balanceRes = await fetch('https://api.bitvavo.com/v2/balance', {
@@ -29,13 +33,8 @@ export async function POST(req: NextRequest) {
     })
 
     const balances = await balanceRes.json()
-    console.log('Balances:', JSON.stringify(balances))
+    if (!balanceRes.ok) return NextResponse.json({ error: 'Erreur auth Bitvavo', details: balances }, { status: 400 })
 
-    if (!balanceRes.ok) {
-      return NextResponse.json({ error: 'Erreur Bitvavo auth', details: balances }, { status: 400 })
-    }
-
-    // Pour chaque crypto avec un solde, récupère les trades
     const imported: any[] = []
     const cryptosFound: string[] = []
 
@@ -46,13 +45,12 @@ export async function POST(req: NextRequest) {
 
       cryptosFound.push(sym)
       const market = `${sym}-EUR`
-      const ts2 = Date.now().toString()
-      const tradePath = `/v2/${market}/trades`
+      const ts2    = Date.now().toString()
       const tradeSig = crypto.createHmac('sha256', api_secret)
-        .update(ts2 + 'GET' + tradePath + '')
+        .update(ts2 + 'GET' + `/v2/${market}/trades` + '')
         .digest('hex')
 
-      const tradesRes = await fetch(`https://api.bitvavo.com${tradePath}?limit=100`, {
+      const tradesRes = await fetch(`https://api.bitvavo.com/v2/${market}/trades?limit=100`, {
         headers: {
           'Bitvavo-Access-Key': api_key,
           'Bitvavo-Access-Signature': tradeSig,
@@ -61,32 +59,51 @@ export async function POST(req: NextRequest) {
         }
       })
 
-      if (!tradesRes.ok) { console.log(`Skip ${market}:`, tradesRes.status); continue }
+      if (!tradesRes.ok) continue
       const trades = await tradesRes.json()
-      console.log(`Trades ${market}:`, trades?.length || 0)
-
       if (!Array.isArray(trades)) continue
+
+      console.log(`${market}: ${trades.length} trades`)
 
       for (const trade of trades) {
         if (trade.side !== 'buy') continue
-        const date   = new Date(parseInt(trade.timestamp)).toISOString().split('T')[0]
-        const price  = parseFloat(trade.price)
-        const qty    = parseFloat(trade.amount)
-        const amount = price * qty
+
+        const date      = new Date(parseInt(trade.timestamp)).toISOString().split('T')[0]
+        const priceEUR  = parseFloat(trade.price)
+        const qty       = parseFloat(trade.amount)
+        // Conversion EUR → USD
+        const priceUSD  = priceEUR * eurToUsd
+        const amountUSD = priceUSD * qty
 
         const { data: existing } = await supabase.from('purchases').select('id')
           .eq('user_id', user.id).eq('sym', sym).eq('note', `bitvavo:${trade.id}`).single()
         if (existing) continue
 
-        await supabase.from('purchases').insert({ user_id:user.id, sym, date, amount, price, qty, note:`bitvavo:${trade.id}` })
-        imported.push({ sym, date, amount, price, qty })
+        await supabase.from('purchases').insert({
+          user_id: user.id,
+          sym,
+          date,
+          amount:  amountUSD,
+          price:   priceUSD,
+          qty,
+          note:    `bitvavo:${trade.id}`,
+        })
+
+        imported.push({ sym, date, amount:amountUSD, price:priceUSD, qty, priceEUR })
       }
     }
 
-    // Sauvegarde les clés
-    await supabase.from('api_keys').upsert({ user_id:user.id, exchange:'bitvavo', api_key, api_secret })
+    await supabase.from('api_keys').upsert({
+      user_id: user.id, exchange:'bitvavo', api_key, api_secret
+    })
 
-    return NextResponse.json({ success:true, imported:imported.length, cryptosFound, trades:imported })
+    return NextResponse.json({
+      success: true,
+      imported: imported.length,
+      cryptosFound,
+      eurToUsd,
+      trades: imported
+    })
   } catch (e: any) {
     console.error('Sync error:', e)
     return NextResponse.json({ error: e.message }, { status: 500 })
