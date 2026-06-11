@@ -72,13 +72,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Sauvegarde les clés
-    await supabase.from('api_keys').upsert({
-      user_id: user.id,
-      exchange: 'bitvavo',
-      api_key,
-      api_secret,
-    })
+ // Sauvegarde les clés
+await supabase.from('api_keys').upsert({
+  user_id: user.id,
+  exchange: 'bitvavo',
+  api_key,
+  api_secret,
+})
 
     return NextResponse.json({ success: true, imported: imported.length, trades: imported })
   } catch (e: any) {
