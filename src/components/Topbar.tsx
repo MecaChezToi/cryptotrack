@@ -1,3 +1,5 @@
+'use client'
+import { useState, useEffect } from 'react'
 import CryptoSelector from './CryptoSelector'
 import type { CryptoData } from '@/hooks/useCrypto'
 
@@ -11,24 +13,25 @@ interface Props {
 }
 
 export default function Topbar({ title, subtitle, cryptoId, onCryptoChange, cryptoData, cryptoLoading }: Props) {
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
   return (
-    <div style={s.topbar}>
+    <div style={{
+      display:'flex', alignItems:'center', justifyContent:'space-between',
+      padding: isMobile ? '12px 14px 10px' : '16px 24px 12px',
+      borderBottom:'1px solid #30363d', flexShrink:0, gap:'8px'
+    }}>
       <div>
-        <h1 style={s.title}>{title}</h1>
-        <p style={s.sub}>{subtitle}</p>
+        <h1 style={{ fontSize:isMobile?'17px':'22px', fontWeight:'600', color:'#e6edf3', lineHeight:'1.2' }}>{title}</h1>
+        {!isMobile && <p style={{ fontSize:'12px', color:'#8b949e', marginTop:'3px' }}>{subtitle}</p>}
       </div>
-      <CryptoSelector
-        selected={cryptoId}
-        onSelect={onCryptoChange}
-        data={cryptoData}
-        loading={cryptoLoading}
-      />
+      <CryptoSelector selected={cryptoId} onSelect={onCryptoChange} data={cryptoData} loading={cryptoLoading} />
     </div>
   )
-}
-
-const s: Record<string, React.CSSProperties> = {
-  topbar: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 24px 12px', borderBottom:'1px solid #30363d', flexShrink:0, gap:'12px' },
-  title: { fontSize:'22px', fontWeight:'600', color:'#e6edf3', lineHeight:'1.2' },
-  sub: { fontSize:'12px', color:'#8b949e', marginTop:'3px' },
 }
