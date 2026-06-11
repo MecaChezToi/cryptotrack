@@ -12,6 +12,7 @@ const PAGES = [
   { path:'/dashboard/alerts',    icon:'🔔', label:'Alertes' },
   { path:'/dashboard/stats',     icon:'↑', label:'Stats' },
   { path:'/dashboard/pricing',   icon:'★', label:'Pro' },
+  { path:'/dashboard/settings', icon:'⚙', label:'Paramètres' },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
