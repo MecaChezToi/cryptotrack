@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     const eurToUsd = fxData?.euro?.usd || 1.08
     console.log('EUR/USD rate:', eurToUsd)
 
-    // Récupère les balances
+  // Récupère les balances
     const timestamp = Date.now().toString()
     const signature = crypto.createHmac('sha256', api_secret)
       .update(timestamp + 'GET' + '/v2/balance' + '')
@@ -33,7 +33,14 @@ export async function POST(req: NextRequest) {
     })
 
     const balances = await balanceRes.json()
-    if (!balanceRes.ok) return NextResponse.json({ error: 'Erreur auth Bitvavo', details: balances }, { status: 400 })
+    console.log('Status:', balanceRes.status)
+    console.log('Balances response:', JSON.stringify(balances))
+
+    if (!balanceRes.ok) return NextResponse.json({ 
+      error: 'Erreur auth Bitvavo', 
+      details: balances,
+      status: balanceRes.status 
+    }, { status: 400 })
 
     const imported: any[] = []
     const cryptosFound: string[] = []
