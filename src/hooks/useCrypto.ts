@@ -10,6 +10,7 @@ export const CRYPTOS = [
   { id:'sui',          sym:'SUI',  name:'Sui',         color:'#4da2ff' },
   { id:'ondo-finance', sym:'ONDO', name:'Ondo',        color:'#1a56db' },
   { id:'hyperliquid',  sym:'HYPE', name:'Hyperliquid', color:'#00ff85' },
+  { id:'usd-coin',     sym:'USDC', name:'USD Coin',    color:'#2775ca' },
 ]
 
 export interface CryptoData {
