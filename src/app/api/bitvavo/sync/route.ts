@@ -48,13 +48,14 @@ export async function POST(req: NextRequest) {
       if (parseFloat(balance.available) === 0 && parseFloat(balance.inOrder) === 0) continue
 
       cryptosFound.push(sym)
-      const market = `${sym}-EUR`
+const market = `${sym}-EUR`
       const ts2    = Date.now().toString()
+      const tradePath = `/v2/${market}/trades?limit=100`
       const tradeSig = crypto.createHmac('sha256', api_secret)
-        .update(ts2 + 'GET' + `/v2/${market}/trades` + '')
+        .update(ts2 + 'GET' + tradePath)
         .digest('hex')
 
-      const tradesRes = await fetch(`https://api.bitvavo.com/v2/${market}/trades?limit=100`, {
+      const tradesRes = await fetch(`https://api.bitvavo.com${tradePath}`, {
         headers: {
           'Bitvavo-Access-Key': api_key,
           'Bitvavo-Access-Signature': tradeSig,
