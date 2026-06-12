@@ -89,24 +89,20 @@ export default function SettingsPage() {
             <div style={s.errorBox}>{error}</div>
           )}
 
-          {result && (
-            <div style={s.successBox}>
-              <div style={{ fontWeight:600, color:green, marginBottom:'4px' }}>
-                ✓ {result.imported} trade{result.imported>1?'s':''} importé{result.imported>1?'s':''}
-              </div>
-              {result.imported > 0 && (
-                <div style={{ fontSize:'11px', color:'#8b949e' }}>
-                  {result.trades.slice(0,5).map((t: any, i: number) => (
-                    <div key={i}>{t.date} — {t.sym} — ${t.amount.toFixed(2)} @ ${t.price.toFixed(2)}</div>
-                  ))}
-                  {result.trades.length > 5 && <div>... et {result.trades.length-5} autres</div>}
-                </div>
-              )}
-              {result.imported === 0 && (
-                <div style={{ fontSize:'11px', color:'#8b949e' }}>Aucun nouveau trade à importer (déjà synchronisé)</div>
-              )}
-            </div>
-          )}
+{result && (
+  <div style={s.successBox}>
+    <div style={{ fontWeight:600, color:green, marginBottom:'8px' }}>
+      ✓ {result.imported} position{result.imported>1?'s':''} synchronisée{result.imported>1?'s':''}
+    </div>
+    {result.summary?.map((s: any, i: number) => (
+      <div key={i} style={{ fontSize:'11px', color:'#8b949e', marginBottom:'4px', paddingBottom:'4px', borderBottom: i<result.summary.length-1?'1px solid #30363d':'none' }}>
+        <strong style={{ color:'#e6edf3' }}>{s.sym}</strong> — {s.tradesScanned} trades scannés → solde net {s.netQty.toFixed(6)} {s.sym}
+        {' '}({s.netLots} lot{s.netLots>1?'s':''}, investi ${s.netInvestedUSD.toFixed(2)})
+        <br/>Balance Bitvavo actuelle: {s.bitvavoBalance.toFixed(6)} {s.sym}
+      </div>
+    ))}
+  </div>
+)}
 
           <button style={{ ...s.btn, width:'100%', justifyContent:'center', marginTop:'4px' }} onClick={handleSync} disabled={syncing}>
             {syncing ? '⏳ Synchronisation en cours…' : hasSaved ? '🔄 Re-synchroniser Bitvavo' : '🔗 Connecter et importer'}
