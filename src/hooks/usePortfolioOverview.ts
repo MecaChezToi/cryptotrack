@@ -38,16 +38,36 @@ export function usePortfolioOverview() {
     const symsWithData = Object.keys(bySym)
     if (!symsWithData.length) { setRows([]); setLoading(false); return }
 
-    // Récupère les prix live en un seul appel batch
+    // Récupère les prix live en un seul appel batch (avec cache 5min)
     const ids = CRYPTOS.filter(c => symsWithData.includes(c.sym)).map(c => c.id)
     let prices: Record<string, number> = {}
+    const cacheKey = `portfolio_prices_${ids.sort().join(',')}`
     try {
-      const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd`)
-      const data = await res.json()
-      for (const c of CRYPTOS) {
-        if (data[c.id]) prices[c.sym] = data[c.id].usd
+      const cached = localStorage.getItem(cacheKey)
+      if (cached) {
+        const { data, ts } = JSON.parse(cached)
+        if (Date.now() - ts < 5 * 60 * 1000) prices = data
       }
     } catch {}
+
+    if (!Object.keys(prices).length) {
+      try {
+        const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd`)
+        const data = await res.json()
+        for (const c of CRYPTOS) {
+          if (data[c.id]) prices[c.sym] = data[c.id].usd
+        }
+        if (Object.keys(prices).length) {
+          try { localStorage.setItem(cacheKey, JSON.stringify({ data: prices, ts: Date.now() })) } catch {}
+        }
+      } catch {
+        // Fallback: cache expiré mais utilisable
+        try {
+          const cached = localStorage.getItem(cacheKey)
+          if (cached) prices = JSON.parse(cached).data
+        } catch {}
+      }
+    }
 
     const result: PortfolioRow[] = symsWithData.map(sym => {
       const c = CRYPTOS.find(x => x.sym === sym)
@@ -65,7 +85,7 @@ export function usePortfolioOverview() {
 
   useEffect(() => {
     load()
-    const interval = setInterval(load, 60000)
+    const interval = setInterval(load, 5 * 60 * 1000)
     return () => clearInterval(interval)
   }, [load])
 

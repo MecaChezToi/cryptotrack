@@ -24,6 +24,22 @@ export interface CryptoData {
   price7d: number[]
 }
 
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+function getCache(key: string): any | null {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const { data, ts } = JSON.parse(raw)
+    if (Date.now() - ts > CACHE_TTL) return null
+    return data
+  } catch { return null }
+}
+
+function setCache(key: string, data: any) {
+  try { localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() })) } catch {}
+}
+
 export function useCrypto(cryptoId: string) {
   const [data, setData] = useState<CryptoData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -32,14 +48,31 @@ export function useCrypto(cryptoId: string) {
   const crypto = CRYPTOS.find(c => c.id === cryptoId) || CRYPTOS[0]
 
   const fetch7d = useCallback(async () => {
+    const cacheKey = `crypto7d_${cryptoId}`
+    const cached = getCache(cacheKey)
+    if (cached) return cached
     try {
       const r = await fetch(`https://api.coingecko.com/api/v3/coins/${cryptoId}/market_chart?vs_currency=usd&days=7`)
       const d = await r.json()
-      return (d.prices as number[][]).map(p => p[1])
+      const prices = (d.prices as number[][]).map(p => p[1])
+      if (prices.length) setCache(cacheKey, prices)
+      return prices
     } catch { return [] }
   }, [cryptoId])
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (force = false) => {
+    const cacheKey = `crypto_${cryptoId}`
+
+    if (!force) {
+      const cached = getCache(cacheKey)
+      if (cached) {
+        setData({ ...crypto, ...cached })
+        setLoading(false)
+        setError(null)
+        return
+      }
+    }
+
     try {
       setLoading(true)
       const [coinRes, price7d] = await Promise.all([
@@ -49,17 +82,25 @@ export function useCrypto(cryptoId: string) {
       if (!coinRes.ok) throw new Error('API error')
       const coin = await coinRes.json()
       const md = coin.market_data
-      setData({
-        ...crypto,
+      const fresh = {
         price:     md.current_price.usd,
         change24h: md.price_change_percentage_24h || 0,
         change7d:  md.price_change_percentage_7d  || 0,
         change30d: md.price_change_percentage_30d || 0,
         price7d,
-      })
+      }
+      setCache(cacheKey, fresh)
+      setData({ ...crypto, ...fresh })
       setError(null)
     } catch (e) {
-      setError('Erreur API CoinGecko')
+      // En cas d'erreur (rate limit), garde les données en cache même expirées
+      const stale = getCache(cacheKey)
+      if (stale) {
+        setData({ ...crypto, ...stale })
+        setError(null)
+      } else {
+        setError('Erreur API CoinGecko')
+      }
     } finally {
       setLoading(false)
     }
@@ -67,9 +108,9 @@ export function useCrypto(cryptoId: string) {
 
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 60000)
+    const interval = setInterval(() => fetchData(true), CACHE_TTL)
     return () => clearInterval(interval)
   }, [fetchData])
 
-  return { data, loading, error, refetch: fetchData }
+  return { data, loading, error, refetch: () => fetchData(true) }
 }

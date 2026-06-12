@@ -79,6 +79,7 @@ export default function PortfolioOverview() {
 const CRYPTOS_BY_SYM: Record<string,string> = {
   BTC:'bitcoin', ETH:'ethereum', SOL:'solana', BNB:'binancecoin',
   XRP:'ripple', SUI:'sui', ONDO:'ondo-finance', HYPE:'hyperliquid',
+  USDC:'usd-coin',
 }
 
 const s: Record<string, React.CSSProperties> = {

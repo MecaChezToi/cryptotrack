@@ -83,8 +83,9 @@ export async function POST(req: NextRequest) {
         const priceUSD  = priceEUR * eurToUsd
         const amountUSD = priceUSD * qty
 
-        const { data: existing } = await supabase.from('purchases').select('id')
+    const { data: existing, error: existErr } = await supabase.from('purchases').select('id')
           .eq('user_id', user.id).eq('sym', sym).eq('note', `bitvavo:${trade.id}`).maybeSingle()
+        if (existErr) debug.push({ existErr: existErr.message, tradeId: trade.id })
         if (existing) continue
 
         await supabase.from('purchases').insert({
