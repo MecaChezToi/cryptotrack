@@ -15,9 +15,8 @@ export async function POST(req: NextRequest) {
     const fxRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=euro&vs_currencies=usd')
     const fxData = await fxRes.json()
     const eurToUsd = fxData?.euro?.usd || 1.08
-    console.log('EUR/USD rate:', eurToUsd)
 
-  // Récupère les balances
+    // Récupère les balances
     const timestamp = Date.now().toString()
     const signature = crypto.createHmac('sha256', api_secret)
       .update(timestamp + 'GET' + '/v2/balance' + '')
@@ -33,17 +32,15 @@ export async function POST(req: NextRequest) {
     })
 
     const balances = await balanceRes.json()
-    console.log('Status:', balanceRes.status)
-    console.log('Balances response:', JSON.stringify(balances))
-
-    if (!balanceRes.ok) return NextResponse.json({ 
-      error: 'Erreur auth Bitvavo', 
+    if (!balanceRes.ok) return NextResponse.json({
+      error: 'Erreur auth Bitvavo',
       details: balances,
-      status: balanceRes.status 
+      status: balanceRes.status
     }, { status: 400 })
 
     const imported: any[] = []
     const cryptosFound: string[] = []
+    const debug: any[] = []
 
     for (const balance of balances) {
       const sym = balance.symbol
@@ -66,11 +63,12 @@ export async function POST(req: NextRequest) {
         }
       })
 
-      if (!tradesRes.ok) continue
-      const trades = await tradesRes.json()
-      if (!Array.isArray(trades)) continue
+      const tradesData = await tradesRes.json()
+      debug.push({ market, status: tradesRes.status, response: Array.isArray(tradesData) ? `array(${tradesData.length})` : tradesData })
 
-      console.log(`${market}: ${trades.length} trades`)
+      if (!tradesRes.ok) continue
+      const trades = tradesData
+      if (!Array.isArray(trades)) continue
 
       for (const trade of trades) {
         if (trade.side !== 'buy') continue
@@ -78,12 +76,11 @@ export async function POST(req: NextRequest) {
         const date      = new Date(parseInt(trade.timestamp)).toISOString().split('T')[0]
         const priceEUR  = parseFloat(trade.price)
         const qty       = parseFloat(trade.amount)
-        // Conversion EUR → USD
         const priceUSD  = priceEUR * eurToUsd
         const amountUSD = priceUSD * qty
 
         const { data: existing } = await supabase.from('purchases').select('id')
-          .eq('user_id', user.id).eq('sym', sym).eq('note', `bitvavo:${trade.id}`).single()
+          .eq('user_id', user.id).eq('sym', sym).eq('note', `bitvavo:${trade.id}`).maybeSingle()
         if (existing) continue
 
         await supabase.from('purchases').insert({
@@ -109,10 +106,10 @@ export async function POST(req: NextRequest) {
       imported: imported.length,
       cryptosFound,
       eurToUsd,
-      trades: imported
+      trades: imported,
+      debug
     })
   } catch (e: any) {
-    console.error('Sync error:', e)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
