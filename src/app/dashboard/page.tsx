@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useApp } from '@/components/AppShell'
 import { usePurchases } from '@/hooks/usePurchases'
 import Topbar from '@/components/Topbar'
+import PortfolioOverview from '@/components/PortfolioOverview'
 import { Chart, registerables } from 'chart.js'
 Chart.register(...registerables)
 
@@ -72,6 +73,8 @@ export default function DashboardPage() {
         cryptoId={cryptoId} onCryptoChange={setCryptoId} cryptoData={cryptoData} cryptoLoading={cryptoLoading} />
 
       <div style={{ padding:pad, flex:1, overflowY:'auto' }}>
+        <PortfolioOverview />
+
         {/* MÉTRIQUES 2x2 sur mobile */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:'8px', marginBottom:'10px' }}>
           <div style={s.card}>
