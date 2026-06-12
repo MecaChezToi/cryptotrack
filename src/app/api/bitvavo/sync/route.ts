@@ -18,11 +18,12 @@ export async function POST(req: NextRequest) {
 
     // Récupère les balances
     const timestamp = Date.now().toString()
+    const balancePath = '/v2/balance'
     const signature = crypto.createHmac('sha256', api_secret)
-      .update(timestamp + 'GET' + '/v2/balance' + '')
+      .update(timestamp + 'GET' + balancePath)
       .digest('hex')
 
-    const balanceRes = await fetch('https://api.bitvavo.com/v2/balance', {
+    const balanceRes = await fetch(`https://api.bitvavo.com${balancePath}`, {
       headers: {
         'Bitvavo-Access-Key': api_key,
         'Bitvavo-Access-Signature': signature,
@@ -48,9 +49,9 @@ export async function POST(req: NextRequest) {
       if (parseFloat(balance.available) === 0 && parseFloat(balance.inOrder) === 0) continue
 
       cryptosFound.push(sym)
-const market = `${sym}-EUR`
-      const ts2    = Date.now().toString()
-      const tradePath = `/v2/${market}/trades?limit=100`
+      const market = `${sym}-EUR`
+      const ts2 = Date.now().toString()
+      const tradePath = `/v2/trades?market=${market}&limit=100`
       const tradeSig = crypto.createHmac('sha256', api_secret)
         .update(ts2 + 'GET' + tradePath)
         .digest('hex')
@@ -73,6 +74,8 @@ const market = `${sym}-EUR`
 
       for (const trade of trades) {
         if (trade.side !== 'buy') continue
+
+        if (debug.length < 3) debug.push({ market, tradeSample: trade })
 
         const date      = new Date(parseInt(trade.timestamp)).toISOString().split('T')[0]
         const priceEUR  = parseFloat(trade.price)
