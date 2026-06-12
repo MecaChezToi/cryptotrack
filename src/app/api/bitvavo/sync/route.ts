@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
 
+interface Lot { qty: number; price: number; date: string; id: string }
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -39,19 +41,23 @@ export async function POST(req: NextRequest) {
       status: balanceRes.status
     }, { status: 400 })
 
-    const imported: any[] = []
     const cryptosFound: string[] = []
-    const debug: any[] = []
+    const summary: any[] = []
+    let totalImported = 0
 
     for (const balance of balances) {
       const sym = balance.symbol
       if (sym === 'EUR') continue
-      if (parseFloat(balance.available) === 0 && parseFloat(balance.inOrder) === 0) continue
+
+      const currentQty = parseFloat(balance.available) + parseFloat(balance.inOrder)
+      if (currentQty <= 0) continue
 
       cryptosFound.push(sym)
       const market = `${sym}-EUR`
+
+      // Récupère TOUS les trades (jusqu'à 1000) pour ce marché
       const ts2 = Date.now().toString()
-      const tradePath = `/v2/trades?market=${market}&limit=100`
+      const tradePath = `/v2/trades?market=${market}&limit=1000`
       const tradeSig = crypto.createHmac('sha256', api_secret)
         .update(ts2 + 'GET' + tradePath)
         .digest('hex')
@@ -65,41 +71,70 @@ export async function POST(req: NextRequest) {
         }
       })
 
-      const tradesData = await tradesRes.json()
-      debug.push({ market, status: tradesRes.status, response: Array.isArray(tradesData) ? `array(${tradesData.length})` : tradesData })
-
       if (!tradesRes.ok) continue
-      const trades = tradesData
+      const trades = await tradesRes.json()
       if (!Array.isArray(trades)) continue
 
-      for (const trade of trades) {
-        if (trade.side !== 'buy') continue
+      // Trie par date croissante (les plus anciens d'abord)
+      const sorted = [...trades].sort((a, b) => parseInt(a.timestamp) - parseInt(b.timestamp))
 
-        if (debug.length < 3) debug.push({ market, tradeSample: trade })
+      // FIFO: file des lots achetés
+      const lots: Lot[] = []
 
-        const date      = new Date(parseInt(trade.timestamp)).toISOString().split('T')[0]
-        const priceEUR  = parseFloat(trade.price)
-        const qty       = parseFloat(trade.amount)
-        const priceUSD  = priceEUR * eurToUsd
-        const amountUSD = priceUSD * qty
+      for (const trade of sorted) {
+        const qty   = parseFloat(trade.amount)
+        const price = parseFloat(trade.price)
+        const date  = new Date(parseInt(trade.timestamp)).toISOString().split('T')[0]
 
-    const { data: existing, error: existErr } = await supabase.from('purchases').select('id')
-          .eq('user_id', user.id).eq('sym', sym).eq('note', `bitvavo:${trade.id}`).maybeSingle()
-        if (existErr) debug.push({ existErr: existErr.message, tradeId: trade.id })
-        if (existing) continue
+        if (trade.side === 'buy') {
+          lots.push({ qty, price, date, id: trade.id })
+        } else if (trade.side === 'sell') {
+          let remaining = qty
+          while (remaining > 0 && lots.length > 0) {
+            const lot = lots[0]
+            if (lot.qty <= remaining) {
+              remaining -= lot.qty
+              lots.shift()
+            } else {
+              lot.qty -= remaining
+              remaining = 0
+            }
+          }
+        }
+      }
 
+      // `lots` contient maintenant uniquement la position nette restante (FIFO)
+      // Supprime les anciens imports bitvavo pour ce symbole, puis réinsère les lots actuels
+      await supabase.from('purchases').delete()
+        .eq('user_id', user.id).eq('sym', sym).like('note', 'bitvavo:%')
+
+      let importedQty = 0, importedAmount = 0
+      for (const lot of lots) {
+        const priceUSD  = lot.price * eurToUsd
+        const amountUSD = priceUSD * lot.qty
         await supabase.from('purchases').insert({
           user_id: user.id,
           sym,
-          date,
-          amount:  amountUSD,
-          price:   priceUSD,
-          qty,
-          note:    `bitvavo:${trade.id}`,
+          date: lot.date,
+          amount: amountUSD,
+          price: priceUSD,
+          qty: lot.qty,
+          note: `bitvavo:${lot.id}`,
         })
-
-        imported.push({ sym, date, amount:amountUSD, price:priceUSD, qty, priceEUR })
+        importedQty += lot.qty
+        importedAmount += amountUSD
+        totalImported++
       }
+
+      summary.push({
+        sym,
+        market,
+        tradesScanned: trades.length,
+        netLots: lots.length,
+        netQty: importedQty,
+        netInvestedUSD: importedAmount,
+        bitvavoBalance: currentQty,
+      })
     }
 
     await supabase.from('api_keys').upsert({
@@ -108,11 +143,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      imported: imported.length,
+      imported: totalImported,
       cryptosFound,
       eurToUsd,
-      trades: imported,
-      debug
+      summary,
     })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
