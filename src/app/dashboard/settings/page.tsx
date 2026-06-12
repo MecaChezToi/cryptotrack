@@ -17,10 +17,10 @@ export default function SettingsPage() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) return
-      supabase.from('api_keys').select('api_key, api_secret').eq('user_id', data.user.id).eq('exchange', 'bitvavo').single()
-        .then(({ data: keys }) => {
-          if (keys) { setApiKey(keys.api_key); setApiSecret(keys.api_secret); setHasSaved(true) }
-        })
+  supabase.from('api_keys').select('api_key, api_secret').eq('user_id', data.user.id).eq('exchange', 'bitvavo').maybeSingle()
+  .then(({ data: keys }) => {
+    if (keys) { setApiKey(keys.api_key); setApiSecret(keys.api_secret); setHasSaved(true) }
+  })
     })
   }, [])
 
